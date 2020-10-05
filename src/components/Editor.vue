@@ -85,10 +85,10 @@ export default {
       selection: undefined,
       lineNumbersHeight: "20px",
       undoOffset: 0,
-      undoTimestamp: 0,
       lastPos: 0,
       codeData: "",
-      composing: false
+      composing: false,
+      cursorMoved: true
     };
   },
   watch: {
@@ -138,8 +138,7 @@ export default {
     }
   },
   mounted() {
-    this.recordChange(this.getPlain());
-    this.undoTimestamp = 0; // Reset timestamp
+    this.pushUndoStack();
     this.styleLineNumbers();
 
     const onPaste = e => {
@@ -155,7 +154,7 @@ export default {
       this.selection = { start: newCursorPos, end: newCursorPos };
 
       const plain = this.getPlain();
-      this.recordChange(plain, this.selection);
+      this.pushUndoStack();
       this.updateContent(plain);
       this.setLineNumbersHeight();
     };
@@ -212,8 +211,9 @@ export default {
       if (this.emitEvents) {
         this.$emit("editorClick", evt);
       }
-      this.undoTimestamp = 0; // Reset timestamp
       this.selection = selectionRange(this.$refs.pre);
+      this.updateLastUndoStack();
+      this.cursorMoved = true;
     },
     getPlain() {
       if (this._innerHTML === this.$refs.pre.innerHTML) {
@@ -225,31 +225,15 @@ export default {
 
       return this._plain;
     },
-    recordChange(plain, selection) {
-      if (plain === this.undoStack[this.undoStack.length - 1]) {
-        return;
-      }
-
-      if (this.undoOffset > 0) {
-        this.undoStack = this.undoStack.slice(0, -this.undoOffset);
-        this.undoOffset = 0;
-      }
-
-      const timestamp = Date.now();
+    pushUndoStack() {
+      this.undoStack.push({});
+      this.updateLastUndoStack();
+    },
+    updateLastUndoStack() {
+      const plain = this.getPlain();
+      const selection = this.selection;
       const record = { plain, selection };
-
-      // Overwrite last record if threshold is not crossed
-      if (timestamp - this.undoTimestamp < 3000) {
-        this.undoStack[this.undoStack.length - 1] = record;
-      } else {
-        this.undoStack.push(record);
-
-        if (this.undoStack.length > 50) {
-          this.undoStack.shift();
-        }
-      }
-
-      this.undoTimestamp = timestamp;
+      this.undoStack[this.undoStack.length - 1] = record;
     },
     updateContent(plain) {
       this.$emit("change", plain);
@@ -335,6 +319,19 @@ export default {
       }
     },
     handleKeyUp(evt) {
+      if (
+        (evt.keyCode >= 37 && evt.keyCode <= 40) || // direction key
+        evt.keyCode === 32 || // space
+        evt.keyCode === 35 || // end
+        evt.keyCode === 36 || // home
+        evt.keyCode === 13 || // enter
+        evt.keyCode === 8 // backSpace
+      ) {
+        this.selection = selectionRange(this.$refs.pre);
+        this.updateLastUndoStack();
+        this.cursorMoved = true;
+      }
+
       const keyupCode = evt.which;
       if (this.composing) {
         if (keyupCode === 13) {
@@ -363,20 +360,22 @@ export default {
         return;
       }
 
-      // Enter key
-      if (evt.keyCode === 13) {
-        this.undoTimestamp = 0;
-      }
-
       this.selection = selectionRange(this.$refs.pre);
 
       if (!Object.values(FORBIDDEN_KEYS).includes(evt.keyCode)) {
+        if (this.undoOffset > 0) {
+          this.undoStack = this.undoStack.slice(0, -this.undoOffset);
+          this.undoOffset = 0;
+          this.pushUndoStack();
+        } else if (this.cursorMoved) {
+          this.pushUndoStack();
+          this.cursorMoved = false;
+        }
+
         const plain = this.getPlain();
 
-        this.recordChange(plain, this.selection);
+        this.updateLastUndoStack();
         this.updateContent(plain);
-      } else {
-        this.undoTimestamp = 0;
       }
     }
   }
