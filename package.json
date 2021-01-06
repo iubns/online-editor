@@ -19,7 +19,7 @@
   "module": "dist/VuePrismEditor.common.js",
   "unpkg": "dist/VuePrismEditor.umd.min.js",
   "dependencies": {
-    "axios": "^0.19.2",
+    "axios": "^0.21.1",
     "dom-iterator": "^1.0.0",
     "escape-html": "^1.0.3",
     "unescape": "^1.0.1",
